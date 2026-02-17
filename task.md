@@ -19,4 +19,10 @@
     - [x] Create `news_engine.py` with caching and deduplication
     - [x] Update `sector_graph_code.py` to fetch real news
     - [x] Integrate sentiment scoring into LLM prompt
+- [x] Pivot to Autonomous AI Trading Agent <!-- id: 8 -->
+    - [x] Design Multi-Agent Architecture (Analyst, Risk Manager, Portfolio Manager)
+    - [x] Implement `RiskManager` node for trade vetting
+    - [x] Implement `PortfolioManager` node for dynamic allocation
+    - [x] Enhance LLM prompts for agency and reasoning (remove hardcoded rules)
+    - [x] Update Streamlit to show "Agent Reasoning Loops"
 

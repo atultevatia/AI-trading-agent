@@ -13,73 +13,75 @@ from sector_graph_code import app
 
 st.set_page_config(page_title="AI Sector Scanner", layout="wide")
 
-st.title("🤖 AI Sector Scanner (LangGraph)")
-st.caption("Scan entire sectors for high-probability setups | NSE/BSE")
+st.title("🤖 Autonomous AI Trading Agent")
+st.caption("Multi-Agent reasoning system: Analyst, Risk Manager, and Portfolio Manager")
 
 # Sidebar
 with st.sidebar:
-    st.header("Scanner Settings")
-    sector = st.selectbox("Select Sector", ["AI", "AUTO", "BANK", "PHARMA", "FMCG"])
-    scan_btn = st.button("Start Scan")
-
+    st.header("Agent Control")
+    sector = st.selectbox("Market Sector", ["AI", "AUTO", "BANK", "PHARMA", "FMCG"])
+    scan_btn = st.button("Activate Agent Loop")
 
 # Main Area
 if scan_btn:
-    with st.spinner(f"Scanning {sector} Sector... This may take a minute."):
+    with st.spinner(f"Agent Loop active for {sector}... Analyzing data and news."):
         try:
-            initial_state = {"sector": sector, "tickers": [], "results": [], "final_ranking": []}
+            initial_state = {
+                "sector": sector, 
+                "tickers": [], 
+                "analyses": [], 
+                "portfolio": [], 
+                "remaining_cash": 10000
+            }
             result = app.invoke(initial_state)
             
-            # --- Results Display ---
-            final_picks = result.get("final_ranking", [])
+            # --- Portfolio Allocation ---
+            portfolio = result.get("portfolio", [])
+            remaining = result.get("remaining_cash", 10000)
             
-            if not final_picks:
-                st.warning("No stocks met the filter criteria.")
+            st.header("🎯 Final Portfolio Allocation")
+            if not portfolio:
+                st.warning("The Portfolio Manager did not allocate capital to any trades in this scan cycle.")
             else:
-                st.success(f"Analyzed {len(final_picks)} opportunities!")
-                
-                # Separate by Tier
-                strong_buys = [p for p in final_picks if p['tier'] == 'STRONG_BUY']
-                watchlist = [p for p in final_picks if p['tier'] == 'WATCHLIST']
-                monitor = [p for p in final_picks if p['tier'] == 'MONITOR']
-                
-                # --- Tabbed View ---
-                t1, t2, t3 = st.tabs([
-                    f"🚀 Strong Buy ({len(strong_buys)})", 
-                    f"👀 Watchlist ({len(watchlist)})", 
-                    f"📡 Monitor ({len(monitor)})"
-                ])
-                
-                def display_tier(picks, color_help):
-                    if not picks:
-                        st.info("No stocks in this tier.")
-                        return
-                        
-                    for pick in picks:
-                        with st.expander(f"{pick['ticker']} | Conf: {pick['confidence']:.2f}"):
-                            c1, c2, c3, c4 = st.columns(4)
-                            c1.metric("Price", pick['price'])
-                            c2.metric("Target", pick['target'])
-                            c3.metric("Stop Loss", pick['stop'])
-                            c4.metric("Tech Score", round(pick.get('tech_score', 0), 2))
-                            
-                            st.markdown(f"**Reasoning:** {pick['reasoning']}")
-                            if color_help == "green":
-                                st.success(f"Rec. Size: {pick['position_size']} (Risk: 1%)")
-                            elif color_help == "yellow":
-                                st.warning("Watch for entry trigger.")
-                            else:
-                                st.info("Keep on radar.")
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    df_portfolio = pd.DataFrame(portfolio)
+                    st.table(df_portfolio[['ticker', 'shares', 'weight_pct', 'reason']])
+                with c2:
+                    st.metric("Remaining Cash", f"₹{remaining:,.2f}")
+                    st.metric("Total Stocks", len(portfolio))
 
-                with t1:
-                    display_tier(strong_buys, "green")
-                with t2:
-                    display_tier(watchlist, "yellow")
-                with t3:
-                    display_tier(monitor, "blue")
+            # --- Agent Reasoning Log ---
+            st.markdown("---")
+            st.header("🧠 Agent Reasoning Logs")
+            
+            analyses = result.get("analyses", [])
+            if not analyses:
+                st.info("No deep analysis logs found.")
+            else:
+                for pick in analyses:
+                    with st.expander(f"REASONING: {pick['ticker']} (Conviction: {pick['conviction']}%)"):
+                        col_a, col_r = st.columns(2)
                         
+                        with col_a:
+                            st.subheader("💡 Analyst Pitch")
+                            st.write(pick['thesis'])
+                            st.json({
+                                "Entry": pick['entry'],
+                                "Target": pick['target'],
+                                "Stop": pick['stop_loss']
+                            })
+                            
+                        with col_r:
+                            st.subheader("🛡️ Risk Review")
+                            st.info(pick['risk_criticism'])
+                            st.success(f"Adjusted Stop: {pick['adjusted_stop']}")
+                            st.write("**Risk Status:** APPROVED")
+
         except Exception as e:
-            st.error(f"Scan failed: {e}")
+            st.error(f"Agent Loop Failed: {e}")
+            st.exception(e)
 
 st.markdown("---")
-st.markdown("*Disclaimer: AI-generated analysis based on simulated mock data/news. Not financial advice.*")
+st.markdown("*Disclaimer: Fully autonomous AI trading recommendations. Not financial advice. Past performance is no guarantee of future results.*")
+
