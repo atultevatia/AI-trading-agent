@@ -33,4 +33,9 @@
     - [x] Increase Concurrency to 15+ workers
     - [x] Merge Analyst and Risk Manager into a "Research Pipe" node to save sync overhead
     - [x] Add session-based constituent caching
+- [x] Interactive Analysis Chatbot <!-- id: 11 -->
+    - [x] Implement Chat Interface in `app.py`
+    - [x] Seed Chat Agent with latest scan context (analyses)
+    - [x] Add conversation history memory
+    - [x] Fix chat styling and visual feedback
 
