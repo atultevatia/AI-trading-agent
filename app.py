@@ -1,4 +1,10 @@
 import streamlit as st
+import os
+
+# --- Secrets Handling for Streamlit Cloud ---
+if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
 from graph_code import app, AgentState
 
 st.set_page_config(page_title="Indian Equities AI Trader", layout="wide")
