@@ -145,30 +145,64 @@ def sector_loader_node(state: OverallState):
 
 def analyst_node(state: OverallState):
     results = []
+    tickers = state['tickers']
+    if not tickers:
+        return {"results": []}
+
+    print(f"--- Batch Fetching Data for {len(tickers)} stocks ---")
+    try:
+        # Download all at once
+        data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
+    except Exception as e:
+        print(f"Batch Download Error: {e}")
+        return {"results": []}
+
     llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
     
-    for ticker in state['tickers']:
-        print(f"Analyzing {ticker}...")
-        ta_data = get_technical_indicators(ticker)
-        
-        if not ta_data:
-            continue
-            
-        current_price = ta_data['price']
-        
-        # Simulated News (In prod, fetch real news)
-        news_snippet = "Company shows steady growth but faces global macro headwinds."
-        
-        # LLM Analysis
-        msg = f"""Ticker: {ticker}
-        Price: {current_price}
-        SMA50: {ta_data['sma_50']}
-        SMA200: {ta_data['sma_200']}
-        RSI: {ta_data['rsi']}
-        News: {news_snippet}
-        """
-        
+    for ticker in tickers:
         try:
+            print(f"Analyzing {ticker}...")
+            # Extract ticker data from multi-index dataframe
+            if len(tickers) > 1:
+                df = data[ticker].dropna()
+            else:
+                df = data.dropna()
+                
+            if df.empty or len(df) < 200:
+                print(f"Skipping {ticker}: Not enough data.")
+                continue
+
+            # Calculate Technicals locally from the batch data
+            df['SMA_50'] = df['Close'].rolling(window=50).mean()
+            df['SMA_200'] = df['Close'].rolling(window=200).mean()
+            
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+            
+            latest = df.iloc[-1]
+            current_price = round(latest['Close'].item(), 2)
+            ta_data = {
+                "price": current_price,
+                "sma_50": round(latest['SMA_50'].item(), 2) if not pd.isna(latest['SMA_50']) else 0,
+                "sma_200": round(latest['SMA_200'].item(), 2) if not pd.isna(latest['SMA_200']) else 0,
+                "rsi": round(latest['RSI'].item(), 2) if not pd.isna(latest['RSI']) else 50
+            }
+
+            # Simulated News
+            news_snippet = "Company shows steady growth but faces global macro headwinds."
+            
+            # LLM Analysis
+            msg = f"""Ticker: {ticker}
+            Price: {current_price}
+            SMA50: {ta_data['sma_50']}
+            SMA200: {ta_data['sma_200']}
+            RSI: {ta_data['rsi']}
+            News: {news_snippet}
+            """
+            
             response = llm.invoke([
                 SystemMessage(content=ANALYST_PROMPT),
                 HumanMessage(content=msg)
@@ -176,18 +210,13 @@ def analyst_node(state: OverallState):
             analysis = json.loads(response.content)
             
             tier = analysis.get('tier', 'SKIP')
-            
             if tier == "SKIP":
                 continue
 
-            # Risk Model logic remains same for Strong Buys
+            # Risk Model
             stop_loss = round(current_price * 0.95, 2)
             risk_per_share = current_price - stop_loss
-            
-            if risk_per_share > 0:
-                pos_size = int(MAX_RISK_INR / risk_per_share)
-            else:
-                pos_size = 0
+            pos_size = int(MAX_RISK_INR / risk_per_share) if risk_per_share > 0 else 0
             
             result: StockResult = {
                 "ticker": ticker,
@@ -205,7 +234,7 @@ def analyst_node(state: OverallState):
             results.append(result)
             
         except Exception as e:
-            print(f"LLM Error on {ticker}: {e}")
+            print(f"Error on {ticker}: {e}")
             continue
 
     return {"results": results}
