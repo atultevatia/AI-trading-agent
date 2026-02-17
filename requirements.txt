@@ -6,4 +6,6 @@ langchain-core
 langchain-openai
 langgraph
 requests
+feedparser
+
 

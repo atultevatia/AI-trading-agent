@@ -8,6 +8,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
 import yfinance as yf
 import pandas as pd
+from news_engine import news_engine
 
 # Load environment variables
 load_dotenv()
@@ -153,6 +154,9 @@ def analyst_node(state: OverallState):
     try:
         # Download all at once
         data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
+        if data.empty:
+            print("No data fetched from Yahoo Finance.")
+            return {"results": []}
     except Exception as e:
         print(f"Batch Download Error: {e}")
         return {"results": []}
@@ -162,45 +166,67 @@ def analyst_node(state: OverallState):
     for ticker in tickers:
         try:
             print(f"Analyzing {ticker}...")
-            # Extract ticker data from multi-index dataframe
+            
+            # Extract ticker data safely from multi-index dataframe
             if len(tickers) > 1:
-                df = data[ticker].dropna()
+                if ticker not in data.columns.levels[0]:
+                    print(f"No data for {ticker} in batch results.")
+                    continue
+                df = data[ticker].copy().dropna()
             else:
-                df = data.dropna()
+                df = data.copy().dropna()
                 
-            if df.empty or len(df) < 200:
-                print(f"Skipping {ticker}: Not enough data.")
+            if df.empty or len(df) < 50: # Lowered threshold slightly for variety
+                print(f"Skipping {ticker}: Insufficient data ({len(df)} rows).")
                 continue
 
-            # Calculate Technicals locally from the batch data
-            df['SMA_50'] = df['Close'].rolling(window=50).mean()
-            df['SMA_200'] = df['Close'].rolling(window=200).mean()
+            # Ensure we have the necessary columns
+            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            if not all(col in df.columns for col in required_cols):
+                print(f"Skipping {ticker}: Missing columns.")
+                continue
+
+            # Calculate Technicals locally
+            # Use .iloc[:, 0] in case of duplicate column names to force Series
+            close_ser = df['Close']
+            if isinstance(close_ser, pd.DataFrame):
+                close_ser = close_ser.iloc[:, 0]
+
+            df['SMA_50'] = close_ser.rolling(window=50).mean()
+            df['SMA_200'] = close_ser.rolling(window=200).mean()
             
-            delta = df['Close'].diff()
+            delta = close_ser.diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             df['RSI'] = 100 - (100 / (1 + rs))
             
             latest = df.iloc[-1]
-            current_price = round(latest['Close'].item(), 2)
+            current_price = float(latest['Close'])
+            
             ta_data = {
-                "price": current_price,
-                "sma_50": round(latest['SMA_50'].item(), 2) if not pd.isna(latest['SMA_50']) else 0,
-                "sma_200": round(latest['SMA_200'].item(), 2) if not pd.isna(latest['SMA_200']) else 0,
-                "rsi": round(latest['RSI'].item(), 2) if not pd.isna(latest['RSI']) else 50
+                "price": round(current_price, 2),
+                "sma_50": round(float(latest['SMA_50']), 2) if not pd.isna(latest['SMA_50']) else 0,
+                "sma_200": round(float(latest['SMA_200']), 2) if not pd.isna(latest['SMA_200']) else 0,
+                "rsi": round(float(latest['RSI']), 2) if not pd.isna(latest['RSI']) else 50
             }
 
-            # Simulated News
-            news_snippet = "Company shows steady growth but faces global macro headwinds."
+            # Fetch Real-Time News
+            news_items = news_engine.get_stock_news(ticker)
+            if news_items:
+                news_snippet = "\n".join([f"- {n['title']} ({n['published']})" for n in news_items[:5]])
+            else:
+                news_snippet = "No recent major news headlines found."
             
             # LLM Analysis
             msg = f"""Ticker: {ticker}
-            Price: {current_price}
+            Price: {ta_data['price']}
             SMA50: {ta_data['sma_50']}
             SMA200: {ta_data['sma_200']}
             RSI: {ta_data['rsi']}
-            News: {news_snippet}
+            
+            Recent News Headlines:
+            {news_snippet}
             """
             
             response = llm.invoke([
@@ -220,12 +246,12 @@ def analyst_node(state: OverallState):
             
             result: StockResult = {
                 "ticker": ticker,
-                "price": current_price,
+                "price": ta_data['price'],
                 "tech_score": analysis.get('tech_score', 0),
                 "sentiment_score": analysis.get('sentiment_score', 0),
                 "tier": tier,
                 "confidence": analysis.get('confidence', 0),
-                "entry": current_price,
+                "entry": ta_data['price'],
                 "stop": stop_loss,
                 "target": round(current_price * 1.1, 2),
                 "position_size": pos_size,
@@ -234,10 +260,11 @@ def analyst_node(state: OverallState):
             results.append(result)
             
         except Exception as e:
-            print(f"Error on {ticker}: {e}")
+            print(f"Error processing {ticker}: {e}")
             continue
 
     return {"results": results}
+
 
 def ranker_node(state: OverallState):
     print("--- Ranking Candidates ---")

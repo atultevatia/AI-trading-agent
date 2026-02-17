@@ -14,4 +14,9 @@
     - [x] Research python libraries for NSE indices (`nselib` or `yfinance` ^CNXAUTO etc)
     - [x] Update `SectorLoader` node to fetch dynamic constituents
     - [x] Update `app.py` sector selection dropdown
+- [x] Integrate Real-Time News Sentiment <!-- id: 7 -->
+    - [x] Install `feedparser`
+    - [x] Create `news_engine.py` with caching and deduplication
+    - [x] Update `sector_graph_code.py` to fetch real news
+    - [x] Integrate sentiment scoring into LLM prompt
 
