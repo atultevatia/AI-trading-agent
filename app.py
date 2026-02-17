@@ -60,7 +60,8 @@ if scan_btn:
                 st.info("No deep analysis logs found.")
             else:
                 for pick in analyses:
-                    with st.expander(f"REASONING: {pick['ticker']} (Conviction: {pick['conviction']}%)"):
+                    status_emoji = "✅" if pick.get('risk_status') == "APPROVED" else "❌"
+                    with st.expander(f"{status_emoji} REASONING: {pick['ticker']} (Conviction: {pick['conviction']}%)"):
                         col_a, col_r = st.columns(2)
                         
                         with col_a:
@@ -74,9 +75,14 @@ if scan_btn:
                             
                         with col_r:
                             st.subheader("🛡️ Risk Review")
-                            st.info(pick['risk_criticism'])
-                            st.success(f"Adjusted Stop: {pick['adjusted_stop']}")
-                            st.write("**Risk Status:** APPROVED")
+                            if pick.get('risk_status') == "APPROVED":
+                                st.info(pick['risk_criticism'])
+                                st.success(f"Adjusted Stop: {pick['adjusted_stop']}")
+                                st.write("**Risk Status:** APPROVED")
+                            else:
+                                st.warning(pick['risk_criticism'])
+                                st.write("**Risk Status:** REJECTED")
+
 
         except Exception as e:
             st.error(f"Agent Loop Failed: {e}")

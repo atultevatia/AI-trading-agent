@@ -1,7 +1,9 @@
 import os
 import operator
 import json
+import time
 from typing import TypedDict, List, Dict, Any
+
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -10,6 +12,7 @@ import yfinance as yf
 import pandas as pd
 import requests
 from io import StringIO
+from concurrent.futures import ThreadPoolExecutor
 from news_engine import news_engine
 
 # Load environment variables
@@ -60,7 +63,7 @@ Output JSON:
 }
 """
 
-PORTFOLIO_MANAGER_PROMPT = """You are a Fund Manager. Total budget: ₹10,000.
+PORTFOLIO_MANAGER_PROMPT = """You are a Fund Manager. Total budget: ₹50,000.
 Allocate capital across approved trades based on conviction and risk. Max 40% per stock.
 
 Output JSON:
@@ -71,6 +74,27 @@ Output JSON:
     "remaining_cash": float
 }
 """
+
+# --- Caching ---
+
+class TradeCache:
+    def __init__(self, ttl_seconds=7200): # 2 hour cache
+        self.cache = {}
+        self.ttl = ttl_seconds
+
+    def get(self, ticker: str):
+        if ticker in self.cache:
+            entry, timestamp = self.cache[ticker]
+            if time.time() - timestamp < self.ttl:
+                return entry
+            del self.cache[ticker]
+        return None
+
+    def set(self, ticker: str, analysis: dict):
+        self.cache[ticker] = (analysis, time.time())
+
+trade_cache = TradeCache()
+sector_cache = {} # Cache for tickers per sector
 
 # --- State Definitions ---
 
@@ -111,38 +135,35 @@ def fetch_nse_constituents(sector_key: str):
 
 def sector_loader_node(state: OverallState):
     sector = state['sector'].upper()
-    fetch_key = "IT" if sector == "AI" else sector
-    tickers = fetch_nse_constituents(fetch_key)
+    if sector in sector_cache:
+        print(f"Using cached constituents for {sector}")
+        tickers = sector_cache[sector]
+    else:
+        fetch_key = "IT" if sector == "AI" else sector
+        tickers = fetch_nse_constituents(fetch_key)
+        sector_cache[sector] = tickers
     return {"tickers": tickers, "analyses": [], "portfolio": [], "remaining_cash": CAPITAL}
 
-def analyst_node(state: OverallState):
-    analyses = []
-    tickers = state['tickers']
-    if not tickers: return {"analyses": []}
-
-    print(f"--- Analyst: Processing {len(tickers)} stocks ---")
-    data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
-    llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
-
-    for ticker in tickers:
+def research_pipeline(ticker: str, ticker_data: pd.DataFrame):
+    """Combines Analysis and Risk Review into a single thread for speed."""
+    # 1. Analyst Stage
+    cached = trade_cache.get(ticker)
+    analysis = None
+    if cached:
+        analysis = cached
+    else:
+        llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
         try:
-            df = data[ticker].copy().dropna() if len(tickers) > 1 else data.copy().dropna()
-            if len(df) < 50: continue
-
-            # Technicals
-            close_ser = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
+            close_ser = ticker_data['Close']
+            if isinstance(close_ser, pd.DataFrame): close_ser = close_ser.iloc[:, 0]
             sma50 = close_ser.rolling(50).mean().iloc[-1]
             sma200 = close_ser.rolling(200).mean().iloc[-1]
-            
-            # News
             news = news_engine.get_stock_news(ticker)
             news_txt = "\n".join([n['title'] for n in news[:3]])
-
             msg = f"Ticker: {ticker}\nPrice: {close_ser.iloc[-1]}\nSMA50: {sma50}\nSMA200: {sma200}\nNews: {news_txt}"
             response = llm.invoke([SystemMessage(content=ANALYST_AGENT_PROMPT), HumanMessage(content=msg)])
             res = json.loads(response.content)
-
-            analyses.append({
+            analysis = {
                 "ticker": ticker,
                 "price": float(close_ser.iloc[-1]),
                 "thesis": res['thesis'],
@@ -150,43 +171,67 @@ def analyst_node(state: OverallState):
                 "entry": res['entry'],
                 "target": res['target'],
                 "stop_loss": res['stop_loss']
-            })
+            }
+            # Cache the raw analysis first
+            trade_cache.set(ticker, analysis)
         except Exception as e:
             print(f"Analyst Error on {ticker}: {e}")
-            
-    return {"analyses": analyses}
+            return None
 
-def risk_manager_node(state: OverallState):
-    print("--- Risk Manager: Boarding Review ---")
-    vetted = []
-    llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
+    # 2. Risk Manager Stage (immediately following logic)
+    # Even if cached, we might need a fresh risk review or we can cache the vetted one
+    # For now, let's run risk review as part of the same thread
+    try:
+        llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
+        msg = f"Trade Pitch for {analysis['ticker']}:\n{json.dumps(analysis, indent=2)}"
+        response = llm.invoke([SystemMessage(content=RISK_MANAGER_PROMPT), HumanMessage(content=msg)])
+        res = json.loads(response.content)
+
+        if res['status'] == "APPROVED":
+            analysis.update({
+                "risk_status": "APPROVED",
+                "risk_criticism": res['risk_criticism'],
+                "adjusted_stop": res['adjusted_stop']
+            })
+        else:
+            analysis.update({
+                "risk_status": "REJECTED",
+                "risk_criticism": res['risk_criticism'],
+                "adjusted_stop": analysis['stop_loss']
+            })
+        return analysis
+    except Exception as e:
+        print(f"Risk Review Error on {analysis['ticker']}: {e}")
+        return analysis # Return partial analysis if risk check fails
+
+def researcher_node(state: OverallState):
+    """High-speed parallel research pipeline."""
+    tickers = state['tickers']
+    if not tickers: return {"analyses": []}
+
+    print(f"--- Researcher: High-Concurrency Pipe ({len(tickers)} stocks) ---")
+    data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
     
-    for analysis in state['analyses']:
-        try:
-            msg = f"Trade Pitch for {analysis['ticker']}:\n{json.dumps(analysis, indent=2)}"
-            response = llm.invoke([SystemMessage(content=RISK_MANAGER_PROMPT), HumanMessage(content=msg)])
-            res = json.loads(response.content)
+    tasks = []
+    # Boosted workers to 20 for maximum overlap of network/LLM calls
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for ticker in tickers:
+            ticker_df = data[ticker].copy().dropna() if len(tickers) > 1 else data.copy().dropna()
+            if len(ticker_df) >= 50:
+                tasks.append(executor.submit(research_pipeline, ticker, ticker_df))
+    
+    results = [task.result() for task in tasks if task.result() is not None]
+    return {"analyses": results}
 
-            if res['status'] == "APPROVED":
-                analysis.update({
-                    "risk_status": "APPROVED",
-                    "risk_criticism": res['risk_criticism'],
-                    "adjusted_stop": res['adjusted_stop']
-                })
-                vetted.append(analysis)
-            else:
-                print(f"Risk Manager REJECTED {analysis['ticker']}: {res['risk_criticism']}")
-        except Exception as e:
-            print(f"Risk Manager Error: {e}")
-
-    return {"analyses": vetted}
 
 def portfolio_manager_node(state: OverallState):
     print("--- Portfolio Manager: Allocating Capital ---")
-    if not state['analyses']: return {"portfolio": [], "remaining_cash": CAPITAL}
+    approved_trades = [a for a in state['analyses'] if a.get('risk_status') == "APPROVED"]
+    if not approved_trades: return {"portfolio": [], "remaining_cash": CAPITAL}
 
     llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
-    msg = f"Approved Trades:\n{json.dumps(state['analyses'], indent=2)}\nMax Capital: ₹{CAPITAL}"
+    msg = f"Approved Trades:\n{json.dumps(approved_trades, indent=2)}\nMax Capital: ₹{CAPITAL}"
+
     
     try:
         response = llm.invoke([SystemMessage(content=PORTFOLIO_MANAGER_PROMPT), HumanMessage(content=msg)])
@@ -201,14 +246,12 @@ def portfolio_manager_node(state: OverallState):
 def create_agent_graph():
     workflow = StateGraph(OverallState)
     workflow.add_node("Loader", sector_loader_node)
-    workflow.add_node("Analyst", analyst_node)
-    workflow.add_node("RiskManager", risk_manager_node)
+    workflow.add_node("Researcher", researcher_node)
     workflow.add_node("PortfolioManager", portfolio_manager_node)
 
     workflow.set_entry_point("Loader")
-    workflow.add_edge("Loader", "Analyst")
-    workflow.add_edge("Analyst", "RiskManager")
-    workflow.add_edge("RiskManager", "PortfolioManager")
+    workflow.add_edge("Loader", "Researcher")
+    workflow.add_edge("Researcher", "PortfolioManager")
     workflow.add_edge("PortfolioManager", END)
 
     return workflow.compile()

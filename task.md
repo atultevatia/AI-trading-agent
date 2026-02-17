@@ -25,4 +25,12 @@
     - [x] Implement `PortfolioManager` node for dynamic allocation
     - [x] Enhance LLM prompts for agency and reasoning (remove hardcoded rules)
     - [x] Update Streamlit to show "Agent Reasoning Loops"
+- [x] Performance Optimization <!-- id: 9 -->
+    - [x] Implement Parallel LLM execution in `Analyst` node
+    - [x] Implement Analysis Caching for stocks (TTL)
+    - [x] Update `PortfolioManager` to handle larger batches efficiently
+- [x] Advanced Speed Optimizations <!-- id: 10 -->
+    - [x] Increase Concurrency to 15+ workers
+    - [x] Merge Analyst and Risk Manager into a "Research Pipe" node to save sync overhead
+    - [x] Add session-based constituent caching
 
