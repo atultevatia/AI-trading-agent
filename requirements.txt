@@ -1,7 +1,9 @@
+streamlit
+python-dotenv
+yfinance
 langchain
 langchain-core
 langchain-openai
 langgraph
-streamlit
-python-dotenv
-yfinance
+requests
+

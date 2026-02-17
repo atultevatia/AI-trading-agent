@@ -1,59 +1,85 @@
 import streamlit as st
 import os
+import pandas as pd
 
 # --- Secrets Handling for Streamlit Cloud ---
-if "OPENAI_API_KEY" in st.secrets:
-    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+try:
+    if "OPENAI_API_KEY" in st.secrets:
+        os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+except FileNotFoundError:
+    pass # Running locally, will rely on .env via dotenv loaded in graph code
 
-from graph_code import app, AgentState
+from sector_graph_code import app
 
-st.set_page_config(page_title="Indian Equities AI Trader", layout="wide")
+st.set_page_config(page_title="AI Sector Scanner", layout="wide")
 
-st.title("🇮🇳 AI Trading Agent (LangGraph)")
-st.caption("Focus: AI & Auto Sectors | NSE/BSE")
+st.title("🤖 AI Sector Scanner (LangGraph)")
+st.caption("Scan entire sectors for high-probability setups | NSE/BSE")
 
-# Sidebar for Inputs
+# Sidebar
 with st.sidebar:
-    st.header("Trade Settings")
-    ticker = st.text_input("Enter Stock Ticker (e.g., TATAMOTORS.NS)", value="TATAMOTORS.NS")
-    sector = st.selectbox("Sector", ["Auto", "AI/Tech", "Other"])
-    analyze_btn = st.button("Analyze Stock")
+    st.header("Scanner Settings")
+    sector = st.selectbox("Select Sector", ["AI", "AUTO", "BANK", "PHARMA", "FMCG"])
+    scan_btn = st.button("Start Scan")
 
-# Main Analysis Area
-if analyze_btn:
-    with st.spinner(f"Running AI Agents on {ticker}..."):
+
+# Main Area
+if scan_btn:
+    with st.spinner(f"Scanning {sector} Sector... This may take a minute."):
         try:
-            # Initialize State
-            initial_state = {
-                "ticker": ticker,
-                "sector": sector,
-                "messages": []
-            }
-            
-            # Run the Graph
+            initial_state = {"sector": sector, "tickers": [], "results": [], "final_ranking": []}
             result = app.invoke(initial_state)
             
-            # Display Results using Tabs
-            tab1, tab2, tab3, tab4 = st.tabs(["Strategy", "Technical", "Fundamental", "Risk"])
+            # --- Results Display ---
+            final_picks = result.get("final_ranking", [])
             
-            with tab1:
-                st.subheader("🚀 Final Trading Strategy")
-                st.markdown(result.get("final_recommendation", "No recommendation generated."))
+            if not final_picks:
+                st.warning("No stocks met the filter criteria.")
+            else:
+                st.success(f"Analyzed {len(final_picks)} opportunities!")
                 
-            with tab2:
-                st.subheader("📈 Technical Analysis")
-                st.markdown(result.get("technical_analysis", "No analysis."))
+                # Separate by Tier
+                strong_buys = [p for p in final_picks if p['tier'] == 'STRONG_BUY']
+                watchlist = [p for p in final_picks if p['tier'] == 'WATCHLIST']
+                monitor = [p for p in final_picks if p['tier'] == 'MONITOR']
                 
-            with tab3:
-                st.subheader("🏢 Fundamental Analysis")
-                st.markdown(result.get("fundamental_analysis", "No analysis."))
+                # --- Tabbed View ---
+                t1, t2, t3 = st.tabs([
+                    f"🚀 Strong Buy ({len(strong_buys)})", 
+                    f"👀 Watchlist ({len(watchlist)})", 
+                    f"📡 Monitor ({len(monitor)})"
+                ])
                 
-            with tab4:
-                st.subheader("🛡️ Risk Assessment")
-                st.markdown(result.get("risk_assessment", "No assessment."))
-                
+                def display_tier(picks, color_help):
+                    if not picks:
+                        st.info("No stocks in this tier.")
+                        return
+                        
+                    for pick in picks:
+                        with st.expander(f"{pick['ticker']} | Conf: {pick['confidence']:.2f}"):
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("Price", pick['price'])
+                            c2.metric("Target", pick['target'])
+                            c3.metric("Stop Loss", pick['stop'])
+                            c4.metric("Tech Score", round(pick.get('tech_score', 0), 2))
+                            
+                            st.markdown(f"**Reasoning:** {pick['reasoning']}")
+                            if color_help == "green":
+                                st.success(f"Rec. Size: {pick['position_size']} (Risk: 1%)")
+                            elif color_help == "yellow":
+                                st.warning("Watch for entry trigger.")
+                            else:
+                                st.info("Keep on radar.")
+
+                with t1:
+                    display_tier(strong_buys, "green")
+                with t2:
+                    display_tier(watchlist, "yellow")
+                with t3:
+                    display_tier(monitor, "blue")
+                        
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            st.error(f"Scan failed: {e}")
 
 st.markdown("---")
-st.markdown("*Disclaimer: This is an AI-generated analysis not financial advice.*")
+st.markdown("*Disclaimer: AI-generated analysis based on simulated mock data/news. Not financial advice.*")
