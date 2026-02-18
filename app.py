@@ -12,6 +12,7 @@ from sector_graph_code import (
     RISK_MANAGER_PROMPT, 
     PORTFOLIO_MANAGER_PROMPT
 )
+import paper_trade_engine as engine
 
 # --- Secrets Handling for Streamlit Cloud ---
 try:
