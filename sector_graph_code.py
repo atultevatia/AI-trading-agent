@@ -254,7 +254,7 @@ def researcher_node(state: OverallState):
     if not tickers: return {"analyses": []}
 
     print(f"--- Researcher: High-Concurrency Pipe ({len(tickers)} stocks) ---")
-    data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
+    data = yf.download(tickers, period="12mo", interval="1d", progress=False, group_by='ticker')
     
     tasks = []
     with ThreadPoolExecutor(max_workers=20) as executor:
