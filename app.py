@@ -99,13 +99,18 @@ with tab_scanner:
         else:
             for pick in analyses:
                 status_emoji = "✅" if pick.get('risk_status') == "APPROVED" else "❌"
-                with st.expander(f"{status_emoji} REASONING: {pick['ticker']} (Conviction: {pick['conviction']}%)"):
+                tier = pick.get('tier', 'N/A')
+                score = pick.get('total_score', 0.0)
+                with st.expander(f"{status_emoji} {tier}: {pick['ticker']} (Score: {score:.2f})"):
                     col_a, col_r = st.columns(2)
                     
                     with col_a:
                         st.subheader("💡 Analyst Pitch")
                         st.write(pick['thesis'])
                         st.json({
+                            "Tier": pick.get('tier'),
+                            "Total Score": pick.get('total_score'),
+                            "Conviction": f"{pick['conviction']}%",
                             "Entry": pick['entry'],
                             "Target": pick['target'],
                             "Stop": pick['stop_loss']

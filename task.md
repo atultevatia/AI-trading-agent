@@ -59,3 +59,8 @@
     - [x] Implement "Authenticity Weighting" (higher score for official announcements)
     - [x] Add support for fetching Corporate Announcements via NSE site filters
     - [x] Update Analyst prompt to prioritize high-authenticity news
+- [x] Quantitative Scoring Engine <!-- id: 15 -->
+    - [x] Update `sector_graph_code.py` Analyst prompt with weighted scoring logic
+    - [x] Adjust `StockAnalysis` TypedDict to include `total_score` and `tier`
+    - [x] Update `app.py` reasoning logs to display the Quantitative Tier and Score
+    - [x] Verify alignment between Analyst conviction and calculated total_score

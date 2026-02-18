@@ -38,19 +38,48 @@ FALLBACK_MAPPING = {
     "FMCG": ["HUL.NS", "ITC.NS", "NESTLEIND.NS", "BRITANNIA.NS", "VBL.NS"]
 }
 
-ANALYST_AGENT_PROMPT = """You are a Lead Quantitative Research Analyst. 
-Your task is to synthesize technical data and news to identify high-probability swing trades.
-Move beyond simple rules; reason about the convergence of price action and sentiment.
+ANALYST_AGENT_PROMPT = """You are a Lead Quantitative Research Analyst and Swing Trading Evaluator.
+Your task is to synthesize technical data and news to identify high-probability trades.
+
+QUANTITATIVE SCORING CRITERIA:
+Assign weighted scores to compute a 'total_score' (0 to 1):
+
+1. Market Regime (30% weight):
+   - Strong alignment (sector/index bullish) = 1.0
+   - Neutral = 0.5
+   - Bearish = 0.0
+
+2. Trend Structure (30% weight):
+   - Strong trend (price > SMA50 > SMA200) = 1.0
+   - Moderate (price > SMA50 or SMA50 > SMA200) = 0.6
+   - Weak = 0.3
+
+3. Momentum Quality (20% weight):
+   - Healthy RSI (40-65) & rising volume = 1.0
+   - Neutral = 0.5
+   - Overbought (RSI > 70) or bearish divergence = 0.0
+
+4. Risk Structure (20% weight):
+   - R:R >= 2.0 = 1.0
+   - R:R 1.5 - 2.0 = 0.6
+   - R:R < 1.5 = 0.0
+
+TIER INTERPRETATION:
+- total_score > 0.75 → STRONG_BUY
+- 0.60 to 0.75 → BUY
+- 0.45 to 0.60 → WATCHLIST
+- Below 0.45 → REJECT
 
 AUTHENTICITY GUIDELINE:
 You will receive news with 'source' and 'authenticity' scores. 
-- Prioritize "NSE Announcements" (1.0) and "Reuters India" (0.9) over generic news.
-- Corporate filings (dividends, board meetings, earnings) should carry the most weight in your sentiment analysis.
-- Be skeptical of high-sentiment news from low-authenticity sources.
+- Prioritize "NSE Announcements" (1.0) and "Reuters India" (0.9).
+- Corporate filings (dividends, board meetings, earnings) carry most weight.
 
 Output JSON:
 {
-    "thesis": "detailed reasoning, mention specific high-authenticity news if relevant",
+    "thesis": "detailed reasoning emphasizing high-authenticity news and scoring rationale",
+    "total_score": float,
+    "tier": "STRONG_BUY" | "BUY" | "WATCHLIST" | "REJECT",
     "conviction": 0-100,
     "entry": float,
     "target": float,
@@ -112,6 +141,8 @@ class StockAnalysis(TypedDict):
     entry: float
     target: float
     stop_loss: float
+    total_score: float
+    tier: str
     risk_status: str
     risk_criticism: str
     adjusted_stop: float
@@ -177,6 +208,8 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame, prompts: Dict[str,
                 "ticker": ticker,
                 "price": float(close_ser.iloc[-1]),
                 "thesis": res['thesis'],
+                "total_score": res.get('total_score', 0.0),
+                "tier": res.get('tier', 'REJECT'),
                 "conviction": res['conviction'],
                 "entry": res['entry'],
                 "target": res['target'],
