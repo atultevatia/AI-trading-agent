@@ -44,4 +44,5 @@
     - [x] Implement "Portfolio & Trade Journal" UI in `app.py`
     - [x] Add real-time P&L tracking for paper trades
     - [x] Implement trade closing/exit logic
+    - [x] Implement Human-in-the-loop (HITL) confirmation step before booking
 

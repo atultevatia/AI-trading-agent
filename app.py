@@ -16,6 +16,9 @@ try:
 except FileNotFoundError:
     pass # Running locally, will rely on .env via dotenv loaded in graph code
 
+if "pending_ticker" not in st.session_state:
+    st.session_state.pending_ticker = None
+
 st.set_page_config(page_title="AI Sector Scanner", layout="wide")
 
 # --- Session State Initialization ---
@@ -103,16 +106,35 @@ with tab_scanner:
                             st.success(f"Adjusted Stop: {pick['adjusted_stop']}")
                             st.write("**Risk Status:** APPROVED")
                             
-                            # Book Trade Button
+                            # Book Trade Logic with Human-in-the-Loop Confirmation
                             allocation = next((a for a in portfolio if a['ticker'] == pick['ticker']), None)
-                            q = allocation['shares'] if allocation else 10
-                            if st.button(f"Book Trade: {pick['ticker']}", key=f"book_{pick['ticker']}"):
-                                success, msg = engine.book_trade(
-                                    pick['ticker'], pick['price'], q, 
-                                    pick['adjusted_stop'], pick['target'], pick['thesis']
-                                )
-                                if success: st.success(msg)
-                                else: st.warning(msg)
+                            qty = allocation['shares'] if allocation else 10
+                            
+                            if st.session_state.get("pending_ticker") == pick['ticker']:
+                                st.warning(f"⚠️ **Review Trade: {qty} shares of {pick['ticker']} at ₹{pick['price']:.2f}**")
+                                st.write(f"Stop Loss: ₹{pick['adjusted_stop']:.2f} | Target: ₹{pick['target']:.2f}")
+                                
+                                c1, c2 = st.columns(2)
+                                with c1:
+                                    if st.button("✅ Confirm Booking", key=f"confirm_{pick['ticker']}"):
+                                        success, msg = engine.book_trade(
+                                            pick['ticker'], pick['price'], qty, 
+                                            pick['adjusted_stop'], pick['target'], pick['thesis']
+                                        )
+                                        if success: 
+                                            st.success(msg)
+                                            st.session_state.pending_ticker = None
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else: st.warning(msg)
+                                with c2:
+                                    if st.button("❌ Cancel", key=f"cancel_{pick['ticker']}"):
+                                        st.session_state.pending_ticker = None
+                                        st.rerun()
+                            else:
+                                if st.button(f"Book Trade: {pick['ticker']}", key=f"book_{pick['ticker']}"):
+                                    st.session_state.pending_ticker = pick['ticker']
+                                    st.rerun()
                         else:
                             st.warning(pick['risk_criticism'])
                             st.write("**Risk Status:** REJECTED")
