@@ -87,40 +87,37 @@ Output JSON:
 }
 """
 
-RISK_MANAGER_PROMPT = """You are a Conservative Professional Swing Trading Risk Manager. 
-Review the trade using the following structured evaluation:
+RISK_MANAGER_PROMPT = """You are a Conservative Professional Swing Trading Risk Advisor. 
+Your role is to identify risks, classify their severity, and suggest improvements to salvage trades.
 
-1. ENTRY STRUCTURE:
-- Entry must not be a raw market price. 
-- Must align with a breakout buffer (e.g., above high) or pullback support. 
-- Avoid chasing extended moves (>5% above SMA20).
+SEVERITY CLASSIFICATION:
+- NONE: No identifiable risk.
+- MINOR: Slight technical stretch or market entry. Suggest a 1% pullback/breakout buffer.
+- MODERATE: Stop < 1.2*ATR or only 1 news source. Reduce confidence.
+- MAJOR: Structural failure (RR < 1.5, bearish regime, stop above entry).
 
-2. STOP LOSS VALIDATION:
-- Stop must be >= 1.5 * ATR away from entry. 
-- Prefer structural support levels. 
-- Reject tight stops inside the volatility range.
-- If the stop is too tight, suggest a revised stop.
+REJECTION RULES:
+Reject ONLY if:
+- Risk-Reward (RR) < 1.5
+- Market regime for the sector is BEARISH
+- Stop loss is structurally invalid (e.g. above entry for Long)
+- Position size logic violates capital preservation rules
 
-3. RISK-REWARD (RR):
-- RR >= 1.8 is preferred. 
-- RR < 1.5 results in immediate rejection. 
-- RR between 1.5 and 1.8 results in a confidence downgrade.
-
-4. SENTIMENT BREADTH:
-- Must use multi-source sentiment (at least two sources).
-- If only one source is used, reduce confidence.
-
-If the trade is salvageable, suggest improvements instead of immediate rejection. Be conservative but constructive.
+ADVISOR GUIDELINES:
+- Do NOT reject solely for "market price" entry; suggest a better entry (e.g. pullback).
+- Do NOT reject solely for limited news; reduce confidence instead.
+- Be constructive. If a trade is salvageable with a wider stop or lower entry, say so.
 
 Output JSON:
 {
   "approved": true,
-  "adjusted_entry": float or null,
-  "adjusted_stop": float or null,
-  "risk_reward": float,
+  "severity": "NONE | MINOR | MODERATE | MAJOR",
+  "adjustments": {
+    "entry": float or null,
+    "stop": float or null
+  },
   "confidence": 0.0-1.0,
-  "risk_flags": ["list", "of", "concise", "flags"],
-  "reason": "professional concise explanation"
+  "reason": "professional concise advisor explanation"
 }
 """
 
@@ -171,9 +168,9 @@ class StockAnalysis(TypedDict):
     tier: str
     risk_status: str
     risk_criticism: str
+    risk_severity: str
     adjusted_stop: float
     adjusted_entry: float
-    risk_flags: List[str]
     risk_reward: float
     risk_confidence: float
 
@@ -263,10 +260,10 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame, prompts: Dict[str,
         analysis.update({
             "risk_status": "APPROVED" if res.get('approved') else "REJECTED",
             "risk_criticism": res.get('reason', ''),
-            "adjusted_stop": res.get('adjusted_stop') or analysis['stop_loss'],
-            "adjusted_entry": res.get('adjusted_entry') or analysis['entry'],
-            "risk_flags": res.get('risk_flags', []),
-            "risk_reward": res.get('risk_reward', 0.0),
+            "risk_severity": res.get('severity', 'NONE'),
+            "adjusted_stop": res.get('adjustments', {}).get('stop') or analysis['stop_loss'],
+            "adjusted_entry": res.get('adjustments', {}).get('entry') or analysis['entry'],
+            "risk_reward": analysis['target'] / (analysis['entry'] or 1.0), # Basic fallback, PM will refine
             "risk_confidence": res.get('confidence', 0.0)
         })
         return analysis

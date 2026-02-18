@@ -69,3 +69,8 @@
     - [x] Refactor `research_pipeline` to handle new risk JSON schema
     - [x] Update `StockAnalysis` TypedDict with risk flags and adjusted entry
     - [x] Update `app.py` UI to display detailed risk breakdown
+- [x] Constructive Risk Analysis (Advisor Mode) <!-- id: 17 -->
+    - [x] Update `sector_graph_code.py` with Severity-based risk prompt
+    - [x] Adjust `StockAnalysis` schema for severity and nested adjustments
+    - [x] Refactor `research_pipeline` to handle new advisor JSON
+    - [x] Revamp `app.py` Risk Review UI to emphasize Severity and salvageable parameters

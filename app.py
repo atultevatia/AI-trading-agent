@@ -117,28 +117,31 @@ with tab_scanner:
                         })
                         
                     with col_r:
-                        st.subheader("🛡️ Risk Review")
+                        st.subheader("🛡️ Risk Advisor")
                         status = pick.get('risk_status')
+                        sev = pick.get('risk_severity', 'NONE')
                         conf = pick.get('risk_confidence', 0.0)
                         
-                        if status == "APPROVED":
-                            st.success(f"**Status:** {status} (Confidence: {conf:.2f})")
-                        else:
-                            st.error(f"**Status:** {status} (Confidence: {conf:.2f})")
-
-                        # Risk Flags
-                        flags = pick.get('risk_flags', [])
-                        if flags:
-                            st.write("**Risk Flags:**")
-                            st.caption(" | ".join([f"⚠️ {f}" for f in flags]))
-
-                        st.info(f"**Analysis:** {pick.get('risk_criticism', 'N/A')}")
+                        # Severity-based styling
+                        sev_colors = {"NONE": "green", "MINOR": "blue", "MODERATE": "orange", "MAJOR": "red"}
+                        sc = sev_colors.get(sev, "gray")
                         
-                        col_r1, col_r2 = st.columns(2)
-                        with col_r1:
-                            st.metric("Adj. Entry", f"₹{pick.get('adjusted_entry', pick['entry']):.2f}")
-                        with col_r2:
-                            st.metric("Adj. Stop", f"₹{pick.get('adjusted_stop', pick['stop_loss']):.2f}")
+                        st.markdown(f"**Severity:** :{sc}[{sev}] | **Conf:** {conf:.2f}")
+
+                        if status == "APPROVED":
+                            st.success(f"**Status:** {status}")
+                        else:
+                            st.error(f"**Status:** {status}")
+
+                        st.info(f"**Advisor Note:** {pick.get('risk_criticism', 'N/A')}")
+                        
+                        # Adjustments section
+                        st.write("**Advisor Adjustments:**")
+                        c_adj1, c_adj2 = st.columns(2)
+                        with c_adj1:
+                            st.metric("Suggested Entry", f"₹{pick.get('adjusted_entry', pick['entry']):.2f}")
+                        with c_adj2:
+                            st.metric("Suggested Stop", f"₹{pick.get('adjusted_stop', pick['stop_loss']):.2f}")
                         
                         if status == "APPROVED":
                             # Book Trade Logic with Human-in-the-Loop Confirmation
