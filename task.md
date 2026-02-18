@@ -54,4 +54,8 @@
     - [x] Update `OverallState` in `sector_graph_code.py` to carry custom instructions
     - [x] Add "Reset to Default" logic for strategy prompts
     - [x] Implement strategy persistence (local storage/session)
-
+- [x] Enhanced News Engine (Authentic Sources) <!-- id: 14 -->
+    - [x] Update `news_engine.py` to use multi-source RSS (Moneycontrol, Reuters, NSE)
+    - [x] Implement "Authenticity Weighting" (higher score for official announcements)
+    - [x] Add support for fetching Corporate Announcements via NSE site filters
+    - [x] Update Analyst prompt to prioritize high-authenticity news

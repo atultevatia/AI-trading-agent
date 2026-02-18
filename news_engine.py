@@ -31,39 +31,42 @@ class NewsEngine:
             return cached_news
 
         try:
-            # Clean ticker for NSE (e.g., RELIANCE.NS -> RELIANCE)
             query_ticker = ticker.split('.')[0]
-            # Use Google News RSS
-            rss_url = f"https://news.google.com/rss/search?q={quote(query_ticker)}+stock+news+India&hl=en-IN&gl=IN&ceid=IN:en"
-            
-            feed = feedparser.parse(rss_url)
             headlines = []
             seen = set()
 
-            for entry in feed.entries[:10]: # Top 10 headlines
-                title = entry.title
-                # Deduplicate and basic cleaning
-                if title not in seen:
-                    headlines.append({
-                        "title": title,
-                        "link": entry.link,
-                        "published": entry.published
-                    })
-                    seen.add(title)
+            # Sources with relative authenticity scores
+            sources = [
+                {"name": "NSE Announcements", "site": "nseindia.com", "score": 1.0},
+                {"name": "Reuters India", "site": "reuters.com", "score": 0.9},
+                {"name": "Moneycontrol", "site": "moneycontrol.com", "score": 0.85},
+                {"name": "Google Finance", "site": "", "score": 0.6} # Generic fallback
+            ]
 
-            # Fallback if no news found specifically with "stock news"
-            if not headlines:
-                 rss_url = f"https://news.google.com/rss/search?q={quote(query_ticker)}&hl=en-IN&gl=IN&ceid=IN:en"
-                 feed = feedparser.parse(rss_url)
-                 for entry in feed.entries[:5]:
-                    if entry.title not in seen:
+            for src in sources:
+                if src['site']:
+                    q = f"site:{src['site']} {query_ticker}"
+                else:
+                    q = f"{query_ticker} stock news India"
+                
+                rss_url = f"https://news.google.com/rss/search?q={quote(q)}&hl=en-IN&gl=IN&ceid=IN:en"
+                feed = feedparser.parse(rss_url)
+                
+                for entry in feed.entries[:5]: # Take top 5 from each source
+                    title = entry.title
+                    if title not in seen:
                         headlines.append({
-                            "title": entry.title,
+                            "title": title,
                             "link": entry.link,
-                            "published": entry.published
+                            "published": entry.published,
+                            "source": src['name'],
+                            "authenticity": src['score']
                         })
-                        seen.add(entry.title)
+                        seen.add(title)
 
+            # Sort by authenticity and recency (basic approximation)
+            headlines.sort(key=lambda x: x['authenticity'], reverse=True)
+            
             self.cache.set(ticker, headlines)
             return headlines
 
