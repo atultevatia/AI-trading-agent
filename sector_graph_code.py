@@ -116,6 +116,7 @@ class OverallState(TypedDict):
     analyses: List[StockAnalysis]
     portfolio: List[Dict[str, Any]]
     remaining_cash: float
+    prompts: Dict[str, str] # Custom instructions for agents
 
 # --- Helper Functions ---
 
@@ -144,7 +145,7 @@ def sector_loader_node(state: OverallState):
         sector_cache[sector] = tickers
     return {"tickers": tickers, "analyses": [], "portfolio": [], "remaining_cash": CAPITAL}
 
-def research_pipeline(ticker: str, ticker_data: pd.DataFrame):
+def research_pipeline(ticker: str, ticker_data: pd.DataFrame, prompts: Dict[str, str]):
     """Combines Analysis and Risk Review into a single thread for speed."""
     # 1. Analyst Stage
     cached = trade_cache.get(ticker)
@@ -161,7 +162,10 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame):
             news = news_engine.get_stock_news(ticker)
             news_txt = "\n".join([n['title'] for n in news[:3]])
             msg = f"Ticker: {ticker}\nPrice: {close_ser.iloc[-1]}\nSMA50: {sma50}\nSMA200: {sma200}\nNews: {news_txt}"
-            response = llm.invoke([SystemMessage(content=ANALYST_AGENT_PROMPT), HumanMessage(content=msg)])
+            
+            # Use dynamic prompt if available, else fallback
+            p_analyst = prompts.get("analyst", ANALYST_AGENT_PROMPT)
+            response = llm.invoke([SystemMessage(content=p_analyst), HumanMessage(content=msg)])
             res = json.loads(response.content)
             analysis = {
                 "ticker": ticker,
@@ -178,13 +182,13 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame):
             print(f"Analyst Error on {ticker}: {e}")
             return None
 
-    # 2. Risk Manager Stage (immediately following logic)
-    # Even if cached, we might need a fresh risk review or we can cache the vetted one
-    # For now, let's run risk review as part of the same thread
+    # 2. Risk Manager Stage
     try:
         llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
         msg = f"Trade Pitch for {analysis['ticker']}:\n{json.dumps(analysis, indent=2)}"
-        response = llm.invoke([SystemMessage(content=RISK_MANAGER_PROMPT), HumanMessage(content=msg)])
+        
+        p_risk = prompts.get("risk", RISK_MANAGER_PROMPT)
+        response = llm.invoke([SystemMessage(content=p_risk), HumanMessage(content=msg)])
         res = json.loads(response.content)
 
         if res['status'] == "APPROVED":
@@ -207,18 +211,18 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame):
 def researcher_node(state: OverallState):
     """High-speed parallel research pipeline."""
     tickers = state['tickers']
+    prompts = state.get('prompts', {})
     if not tickers: return {"analyses": []}
 
     print(f"--- Researcher: High-Concurrency Pipe ({len(tickers)} stocks) ---")
     data = yf.download(tickers, period="7mo", interval="1d", progress=False, group_by='ticker')
     
     tasks = []
-    # Boosted workers to 20 for maximum overlap of network/LLM calls
     with ThreadPoolExecutor(max_workers=20) as executor:
         for ticker in tickers:
             ticker_df = data[ticker].copy().dropna() if len(tickers) > 1 else data.copy().dropna()
             if len(ticker_df) >= 50:
-                tasks.append(executor.submit(research_pipeline, ticker, ticker_df))
+                tasks.append(executor.submit(research_pipeline, ticker, ticker_df, prompts))
     
     results = [task.result() for task in tasks if task.result() is not None]
     return {"analyses": results}
@@ -227,14 +231,15 @@ def researcher_node(state: OverallState):
 def portfolio_manager_node(state: OverallState):
     print("--- Portfolio Manager: Allocating Capital ---")
     approved_trades = [a for a in state['analyses'] if a.get('risk_status') == "APPROVED"]
+    prompts = state.get('prompts', {})
     if not approved_trades: return {"portfolio": [], "remaining_cash": CAPITAL}
 
     llm = ChatOpenAI(model="gpt-4o", temperature=0, model_kwargs={"response_format": {"type": "json_object"}})
     msg = f"Approved Trades:\n{json.dumps(approved_trades, indent=2)}\nMax Capital: ₹{CAPITAL}"
 
-    
     try:
-        response = llm.invoke([SystemMessage(content=PORTFOLIO_MANAGER_PROMPT), HumanMessage(content=msg)])
+        p_pm = prompts.get("portfolio", PORTFOLIO_MANAGER_PROMPT)
+        response = llm.invoke([SystemMessage(content=p_pm), HumanMessage(content=msg)])
         res = json.loads(response.content)
         return {"portfolio": res['allocations'], "remaining_cash": res.get('remaining_cash', 0)}
     except Exception as e:

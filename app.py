@@ -6,8 +6,12 @@ import time
 import yfinance as yf
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
-from sector_graph_code import app
-import paper_trade_engine as engine
+from sector_graph_code import (
+    app, 
+    ANALYST_AGENT_PROMPT, 
+    RISK_MANAGER_PROMPT, 
+    PORTFOLIO_MANAGER_PROMPT
+)
 
 # --- Secrets Handling for Streamlit Cloud ---
 try:
@@ -26,12 +30,18 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
+if "strategy_prompts" not in st.session_state:
+    st.session_state.strategy_prompts = {
+        "analyst": ANALYST_AGENT_PROMPT,
+        "risk": RISK_MANAGER_PROMPT,
+        "portfolio": PORTFOLIO_MANAGER_PROMPT
+    }
 
 st.title("🤖 Autonomous AI Trading Agent")
-st.caption("Multi-Agent reasoning system: Analyst, Risk Manager, Portfolio Manager & Paper Trading")
+st.caption("Multi-Agent reasoning system: Analyst, Risk Manager, Portfolio Manager, Paper Trading & Custom Strategy")
 
 # --- Tabs ---
-tab_scanner, tab_portfolio = st.tabs(["🔍 Sector Scanner", "📊 Paper Portfolio"])
+tab_scanner, tab_portfolio, tab_strategy = st.tabs(["🔍 Sector Scanner", "📊 Paper Portfolio", "⚙️ Strategy Settings"])
 
 # Sidebar
 with st.sidebar:
@@ -48,7 +58,8 @@ with tab_scanner:
                     "tickers": [], 
                     "analyses": [], 
                     "portfolio": [], 
-                    "remaining_cash": 10000
+                    "remaining_cash": 10000,
+                    "prompts": st.session_state.strategy_prompts
                 }
                 result = app.invoke(initial_state)
                 st.session_state.last_result = result # Persist for interaction
@@ -310,6 +321,49 @@ with tab_portfolio:
             mime="application/json",
             help="Back up your trades! Streamlit Cloud storage is ephemeral and clears on restarts."
         )
+
+# --- Strategy Settings Tab ---
+with tab_strategy:
+    st.header("⚙️ Agent Strategy Customization")
+    st.write("Customize the 'brain' of each agent. Your changes take effect in the next scan cycle.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("👨‍🔬 Analyst Persona")
+        st.session_state.strategy_prompts["analyst"] = st.text_area(
+            "Analyst Instructions", 
+            value=st.session_state.strategy_prompts["analyst"], 
+            height=300,
+            help="Define how the Analyst should interpret technicals and news sentiment."
+        )
+        
+        st.subheader("🛡️ Risk Manager Persona")
+        st.session_state.strategy_prompts["risk"] = st.text_area(
+            "Risk Manager Instructions", 
+            value=st.session_state.strategy_prompts["risk"], 
+            height=300,
+            help="Define the criteria for trade approval and rejections."
+        )
+
+    with col2:
+        st.subheader("💼 Portfolio Manager Persona")
+        st.session_state.strategy_prompts["portfolio"] = st.text_area(
+            "Portfolio Manager Instructions", 
+            value=st.session_state.strategy_prompts["portfolio"], 
+            height=300,
+            help="Define capital allocation rules and diversification constraints."
+        )
+        
+        st.markdown("---")
+        if st.button("🔄 Reset to Default Strategy"):
+            st.session_state.strategy_prompts = {
+                "analyst": ANALYST_AGENT_PROMPT,
+                "risk": RISK_MANAGER_PROMPT,
+                "portfolio": PORTFOLIO_MANAGER_PROMPT
+            }
+            st.success("Prompts reset to system defaults!")
+            st.rerun()
 
 st.markdown("---")
 st.markdown("*Disclaimer: Autonomous AI recommendations. Not financial advice.*")

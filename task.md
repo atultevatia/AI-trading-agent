@@ -47,4 +47,10 @@
     - [x] Implement Human-in-the-loop (HITL) confirmation step before booking
     - [x] Implement Chat-based trade booking with override capability
     - [x] Add Download button for trade data (persistent backup)
+- [x] Strategy Customization Engine <!-- id: 13 -->
+    - [x] Create "Strategy Settings" tab in `app.py`
+    - [x] Implement editable text areas for Analyst, Risk, and PM prompts
+    - [x] Update `OverallState` in `sector_graph_code.py` to carry custom instructions
+    - [x] Add "Reset to Default" logic for strategy prompts
+    - [x] Implement strategy persistence (local storage/session)
 
