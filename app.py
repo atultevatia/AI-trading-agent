@@ -298,6 +298,18 @@ with tab_portfolio:
     closed = trades.get('closed', [])
     if closed:
         st.dataframe(pd.DataFrame(closed)[['ticker', 'entry_price', 'exit_price', 'quantity', 'pnl', 'pnl_pct', 'entry_time']])
+    
+    # --- Download Data Option ---
+    st.markdown("---")
+    if active_trades or closed:
+        json_data = json.dumps(trades, indent=4)
+        st.download_button(
+            label="📥 Download All Trade Data (JSON)",
+            data=json_data,
+            file_name="paper_trades_backup.json",
+            mime="application/json",
+            help="Back up your trades! Streamlit Cloud storage is ephemeral and clears on restarts."
+        )
 
 st.markdown("---")
 st.markdown("*Disclaimer: Autonomous AI recommendations. Not financial advice.*")
