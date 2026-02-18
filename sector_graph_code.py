@@ -63,7 +63,7 @@ Output JSON:
 }
 """
 
-PORTFOLIO_MANAGER_PROMPT = """You are a Fund Manager. Total budget: ₹50,000.
+PORTFOLIO_MANAGER_PROMPT = """You are a Fund Manager. Total budget: ₹10,000.
 Allocate capital across approved trades based on conviction and risk. Max 40% per stock.
 
 Output JSON:
