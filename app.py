@@ -146,7 +146,31 @@ with tab_scanner:
         for message in st.session_state.messages:
             role = "assistant" if isinstance(message, AIMessage) else "user"
             with st.chat_message(role):
-                st.markdown(message.content)
+                content = message.content
+                display_content = content
+                booking_proposal = None
+                
+                if role == "assistant" and "PROPOSE_BOOK:" in content:
+                    parts = content.split("PROPOSE_BOOK:")
+                    display_content = parts[0].strip()
+                    try:
+                        booking_proposal = json.loads(parts[1].strip())
+                    except: pass
+                
+                st.markdown(display_content)
+                
+                if booking_proposal:
+                    if st.button(f"Book {booking_proposal['ticker']} (Chat Manual Override)", key=f"hist_chat_book_{booking_proposal['ticker']}_{hash(content)}"):
+                        success, msg = engine.book_trade(
+                            booking_proposal['ticker'], 
+                            booking_proposal['price'], 
+                            booking_proposal['shares'], 
+                            booking_proposal['stop'], 
+                            booking_proposal['target'], 
+                            "Manual override via Chat Agent"
+                        )
+                        if success: st.success(msg)
+                        else: st.warning(msg)
 
         if prompt := st.chat_input("Ask about the scan results..."):
             st.session_state.messages.append(HumanMessage(content=prompt))
@@ -161,11 +185,49 @@ with tab_scanner:
 
             with st.chat_message("assistant"):
                 llm = ChatOpenAI(model="gpt-4o", temperature=0.5)
-                system_msg = SystemMessage(content=f"You are a professional quant analyst. Details: {json.dumps(context_data)}")
+                # Updated System Prompt to allow overrides and systematic booking signals
+                system_msg = SystemMessage(content=f"""You are a professional quant analyst. 
+                Context of latest scan: {json.dumps(context_data)}
+                
+                USER GUIDELINES:
+                1. Answer questions concisely based on the scan data.
+                2. If the user wants to book a trade (even if REJECTED), you should facilitate it.
+                3. To propose a booking, your response MUST end with the following exact format on a new line:
+                   PROPOSE_BOOK: {{"ticker": "TICKER", "shares": QTY, "price": PRICE, "stop": STOP, "target": TARGET}}
+                4. Use the recommended 'shares' from the portfolio allocation if available, otherwise default to a reasonable amount (e.g., 10).
+                5. Use the 'price', 'adjusted_stop', and 'target' from the analysis logs.""")
+                
                 history = st.session_state.messages[-10:]
                 response = llm.invoke([system_msg] + history)
-                st.markdown(response.content)
-                st.session_state.messages.append(AIMessage(content=response.content))
+                
+                # Render response and check for booking signal
+                content = response.content
+                display_content = content
+                booking_proposal = None
+                
+                if "PROPOSE_BOOK:" in content:
+                    parts = content.split("PROPOSE_BOOK:")
+                    display_content = parts[0].strip()
+                    try:
+                        booking_proposal = json.loads(parts[1].strip())
+                    except: pass
+
+                st.markdown(display_content)
+                st.session_state.messages.append(AIMessage(content=content))
+
+                if booking_proposal:
+                    st.warning(f"🛡️ **Manual Override: Book {booking_proposal['shares']} shares of {booking_proposal['ticker']}?**")
+                    if st.button(f"Confirm Chat Booking: {booking_proposal['ticker']}", key=f"chat_book_{time.time()}"):
+                        success, msg = engine.book_trade(
+                            booking_proposal['ticker'], 
+                            booking_proposal['price'], 
+                            booking_proposal['shares'], 
+                            booking_proposal['stop'], 
+                            booking_proposal['target'], 
+                            "Manual override via Chat Agent"
+                        )
+                        if success: st.success(msg)
+                        else: st.warning(msg)
 
 # --- Paper Portfolio Tab ---
 with tab_portfolio:

@@ -45,4 +45,5 @@
     - [x] Add real-time P&L tracking for paper trades
     - [x] Implement trade closing/exit logic
     - [x] Implement Human-in-the-loop (HITL) confirmation step before booking
+    - [x] Implement Chat-based trade booking with override capability
 
