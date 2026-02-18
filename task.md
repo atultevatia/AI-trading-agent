@@ -38,4 +38,10 @@
     - [x] Seed Chat Agent with latest scan context (analyses)
     - [x] Add conversation history memory
     - [x] Fix chat styling and visual feedback
+- [x] Paper Trading System <!-- id: 12 -->
+    - [x] Create `paper_trade_engine.py` for storage (JSON/CSV)
+    - [x] Add "Book Trade" functionality in reasoning logs
+    - [x] Implement "Portfolio & Trade Journal" UI in `app.py`
+    - [x] Add real-time P&L tracking for paper trades
+    - [x] Implement trade closing/exit logic
 
