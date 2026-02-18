@@ -87,14 +87,40 @@ Output JSON:
 }
 """
 
-RISK_MANAGER_PROMPT = """You are a Conservative Risk Officer. Your job is to find reasons NOT to take the trade pitched by the Analyst.
-Critique the entry, stop loss, and news sentiment.
+RISK_MANAGER_PROMPT = """You are a Conservative Professional Swing Trading Risk Manager. 
+Review the trade using the following structured evaluation:
+
+1. ENTRY STRUCTURE:
+- Entry must not be a raw market price. 
+- Must align with a breakout buffer (e.g., above high) or pullback support. 
+- Avoid chasing extended moves (>5% above SMA20).
+
+2. STOP LOSS VALIDATION:
+- Stop must be >= 1.5 * ATR away from entry. 
+- Prefer structural support levels. 
+- Reject tight stops inside the volatility range.
+- If the stop is too tight, suggest a revised stop.
+
+3. RISK-REWARD (RR):
+- RR >= 1.8 is preferred. 
+- RR < 1.5 results in immediate rejection. 
+- RR between 1.5 and 1.8 results in a confidence downgrade.
+
+4. SENTIMENT BREADTH:
+- Must use multi-source sentiment (at least two sources).
+- If only one source is used, reduce confidence.
+
+If the trade is salvageable, suggest improvements instead of immediate rejection. Be conservative but constructive.
 
 Output JSON:
 {
-    "status": "APPROVED" | "REJECTED",
-    "risk_criticism": "reasoning for selection",
-    "adjusted_stop": float
+  "approved": true,
+  "adjusted_entry": float or null,
+  "adjusted_stop": float or null,
+  "risk_reward": float,
+  "confidence": 0.0-1.0,
+  "risk_flags": ["list", "of", "concise", "flags"],
+  "reason": "professional concise explanation"
 }
 """
 
@@ -146,6 +172,10 @@ class StockAnalysis(TypedDict):
     risk_status: str
     risk_criticism: str
     adjusted_stop: float
+    adjusted_entry: float
+    risk_flags: List[str]
+    risk_reward: float
+    risk_confidence: float
 
 class OverallState(TypedDict):
     sector: str
@@ -230,18 +260,15 @@ def research_pipeline(ticker: str, ticker_data: pd.DataFrame, prompts: Dict[str,
         response = llm.invoke([SystemMessage(content=p_risk), HumanMessage(content=msg)])
         res = json.loads(response.content)
 
-        if res['status'] == "APPROVED":
-            analysis.update({
-                "risk_status": "APPROVED",
-                "risk_criticism": res['risk_criticism'],
-                "adjusted_stop": res['adjusted_stop']
-            })
-        else:
-            analysis.update({
-                "risk_status": "REJECTED",
-                "risk_criticism": res['risk_criticism'],
-                "adjusted_stop": analysis['stop_loss']
-            })
+        analysis.update({
+            "risk_status": "APPROVED" if res.get('approved') else "REJECTED",
+            "risk_criticism": res.get('reason', ''),
+            "adjusted_stop": res.get('adjusted_stop') or analysis['stop_loss'],
+            "adjusted_entry": res.get('adjusted_entry') or analysis['entry'],
+            "risk_flags": res.get('risk_flags', []),
+            "risk_reward": res.get('risk_reward', 0.0),
+            "risk_confidence": res.get('confidence', 0.0)
+        })
         return analysis
     except Exception as e:
         print(f"Risk Review Error on {analysis['ticker']}: {e}")

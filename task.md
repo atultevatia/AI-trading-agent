@@ -64,3 +64,8 @@
     - [x] Adjust `StockAnalysis` TypedDict to include `total_score` and `tier`
     - [x] Update `app.py` reasoning logs to display the Quantitative Tier and Score
     - [x] Verify alignment between Analyst conviction and calculated total_score
+- [x] Professional Risk Management Engine <!-- id: 16 -->
+    - [x] Update `sector_graph_code.py` with structured risk evaluation prompt
+    - [x] Refactor `research_pipeline` to handle new risk JSON schema
+    - [x] Update `StockAnalysis` TypedDict with risk flags and adjusted entry
+    - [x] Update `app.py` UI to display detailed risk breakdown

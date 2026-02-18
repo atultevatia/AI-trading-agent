@@ -118,25 +118,45 @@ with tab_scanner:
                         
                     with col_r:
                         st.subheader("🛡️ Risk Review")
-                        if pick.get('risk_status') == "APPROVED":
-                            st.info(pick['risk_criticism'])
-                            st.success(f"Adjusted Stop: {pick['adjusted_stop']}")
-                            st.write("**Risk Status:** APPROVED")
-                            
+                        status = pick.get('risk_status')
+                        conf = pick.get('risk_confidence', 0.0)
+                        
+                        if status == "APPROVED":
+                            st.success(f"**Status:** {status} (Confidence: {conf:.2f})")
+                        else:
+                            st.error(f"**Status:** {status} (Confidence: {conf:.2f})")
+
+                        # Risk Flags
+                        flags = pick.get('risk_flags', [])
+                        if flags:
+                            st.write("**Risk Flags:**")
+                            st.caption(" | ".join([f"⚠️ {f}" for f in flags]))
+
+                        st.info(f"**Analysis:** {pick.get('risk_criticism', 'N/A')}")
+                        
+                        col_r1, col_r2 = st.columns(2)
+                        with col_r1:
+                            st.metric("Adj. Entry", f"₹{pick.get('adjusted_entry', pick['entry']):.2f}")
+                        with col_r2:
+                            st.metric("Adj. Stop", f"₹{pick.get('adjusted_stop', pick['stop_loss']):.2f}")
+                        
+                        if status == "APPROVED":
                             # Book Trade Logic with Human-in-the-Loop Confirmation
                             allocation = next((a for a in portfolio if a['ticker'] == pick['ticker']), None)
                             qty = allocation['shares'] if allocation else 10
+                            entry_p = pick.get('adjusted_entry', pick['price'])
+                            stop_p = pick.get('adjusted_stop', pick['stop_loss'])
                             
                             if st.session_state.get("pending_ticker") == pick['ticker']:
-                                st.warning(f"⚠️ **Review Trade: {qty} shares of {pick['ticker']} at ₹{pick['price']:.2f}**")
-                                st.write(f"Stop Loss: ₹{pick['adjusted_stop']:.2f} | Target: ₹{pick['target']:.2f}")
+                                st.warning(f"⚠️ **Review Trade: {qty} shares of {pick['ticker']} at ₹{entry_p:.2f}**")
+                                st.write(f"Stop Loss: ₹{stop_p:.2f} | Target: ₹{pick['target']:.2f}")
                                 
-                                c1, c2 = st.columns(2)
-                                with c1:
-                                    if st.button("✅ Confirm Booking", key=f"confirm_{pick['ticker']}"):
+                                c_ok, c_no = st.columns(2)
+                                with c_ok:
+                                    if st.button("✅ Confirm", key=f"confirm_{pick['ticker']}"):
                                         success, msg = engine.book_trade(
-                                            pick['ticker'], pick['price'], qty, 
-                                            pick['adjusted_stop'], pick['target'], pick['thesis']
+                                            pick['ticker'], entry_p, qty, 
+                                            stop_p, pick['target'], pick['thesis']
                                         )
                                         if success: 
                                             st.success(msg)
@@ -144,17 +164,14 @@ with tab_scanner:
                                             time.sleep(1)
                                             st.rerun()
                                         else: st.warning(msg)
-                                with c2:
+                                with c_no:
                                     if st.button("❌ Cancel", key=f"cancel_{pick['ticker']}"):
                                         st.session_state.pending_ticker = None
                                         st.rerun()
                             else:
-                                if st.button(f"Book Trade: {pick['ticker']}", key=f"book_{pick['ticker']}"):
+                                if st.button(f"🛒 Book {pick['ticker']}", key=f"book_{pick['ticker']}"):
                                     st.session_state.pending_ticker = pick['ticker']
                                     st.rerun()
-                        else:
-                            st.warning(pick['risk_criticism'])
-                            st.write("**Risk Status:** REJECTED")
 
         # --- Interactive Analysis Chatbot ---
         st.markdown("---")
