@@ -243,7 +243,13 @@ with tab_scanner:
 
 # --- Paper Portfolio Tab ---
 with tab_portfolio:
-    st.header("📈 Active Paper Positions")
+    c_head, c_refresh = st.columns([4, 1])
+    with c_head:
+        st.header("📈 Active Paper Positions")
+    with c_refresh:
+        if st.button("🔄 Refresh Prices"):
+            st.rerun()
+            
     trades = engine.load_trades()
     active_trades = trades.get('active', [])
     
